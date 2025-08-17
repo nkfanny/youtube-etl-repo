@@ -62,8 +62,21 @@ def etl_debug():
         youtube = build('youtube', 'v3', credentials=credentials)
         steps.append("4. YouTube service created")
         
-        # Étape 4: Test Channel
-        response = youtube.channels().list(part='id,snippet', mine=True).execute()
+# Étape 4: Test Channel (deux méthodes)
+try:
+    response = youtube.channels().list(part='id,snippet', mine=True).execute()
+    if response.get('items'):
+        steps.append("4a. Channel found with mine=True")
+    else:
+        steps.append("4a. No channel with mine=True, trying channel ID method...")
+        # Essayez avec votre ID de chaîne - remplacez UCxxxxxxxxx par votre vrai ID
+        response = youtube.channels().list(part='id,snippet', id='UCS1m_ZhEAbQKfvIdAwoax2A').execute()
+        if not response.get('items'):
+            raise Exception('Channel not found with either method')
+        steps.append("4b. Channel found with direct ID")
+except Exception as e:
+    steps.append(f"4. Channel test failed: {str(e)}")
+    raise
         if not response.get('items'):
             raise Exception('No YouTube channel found')
         
