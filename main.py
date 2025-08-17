@@ -93,7 +93,7 @@ def test_youtube():
             endDate=str(end_date),
             metrics='views,estimatedMinutesWatched',
             dimensions='day',
-            sort='day'
+           # sort='day'
         ).execute()
         
         rows = response.get('rows', [])
