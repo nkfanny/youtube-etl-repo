@@ -11,7 +11,7 @@ import re
 app = Flask(__name__)
 
 # Configuration
-SPREADSHEET_NAME = "YouTube ETL Data"
+SPREADSHEET_NAME = "YouTube_Intelligence"
 SPREADSHEET_ID = "1bvob7xaoO5X-RHAhl34ZVcX2IH2qYufVy9aKaUdNXxU"
 CHANNEL_ID = "UCS1m_ZhEAbQKfvIdAwoax2A"
 
@@ -19,9 +19,9 @@ CHANNEL_ID = "UCS1m_ZhEAbQKfvIdAwoax2A"
 def hello():
     return jsonify({
         'status': 'success',
-        'message': 'YouTube ETL Service with Dual Auth!',
+        'message': 'YouTube ETL Service - Raw Daily Data!',
         'service': 'youtube-etl',
-        'version': '3.0',
+        'version': '4.0',
         'authentication': 'YouTube OAuth + Sheets Service Account',
         'endpoints': ['/etl', '/test', '/test-youtube', '/test-sheets']
     })
@@ -157,9 +157,9 @@ def test_sheets():
 
 @app.route('/etl')
 def run_etl():
-    """ETL YouTube complet avec double authentification"""
+    """ETL YouTube complet avec nouvelles colonnes Raw_Daily_Data"""
     try:
-        print("=== 🚀 DÉBUT ETL YOUTUBE COMPLET ===")
+        print("=== 🚀 DÉBUT ETL YOUTUBE RAW DAILY DATA ===")
         start_time = datetime.now()
         print(f"🕐 Début: {start_time.isoformat()}")
         
@@ -185,16 +185,16 @@ def run_etl():
         start_date = end_date - timedelta(days=6)
         print(f"📅 Période ETL: {start_date} → {end_date}")
         
-        # 4. Récupérer données Analytics
-        print("3️⃣ Récupération Analytics...")
-        analytics_rows = get_analytics_data_daily(analytics_service, str(start_date), str(end_date))
+        # 4. Récupérer données Analytics détaillées
+        print("3️⃣ Récupération Analytics détaillées...")
+        analytics_rows = get_analytics_data_detailed(analytics_service, str(start_date), str(end_date))
         print(f"✅ Analytics: {len(analytics_rows)} lignes récupérées")
         
         # 5. Sauvegarder dans Sheets
-        print("4️⃣ Sauvegarde dans Sheets...")
+        print("4️⃣ Sauvegarde dans Raw_Daily_Data...")
         if analytics_rows:
-            save_analytics_to_sheets(sheets_client, analytics_rows)
-            print("✅ Données sauvegardées dans Sheets")
+            save_raw_daily_data(sheets_client, analytics_rows)
+            print("✅ Données sauvegardées dans Raw_Daily_Data")
         else:
             print("⚠️ Aucune donnée à sauvegarder")
         
@@ -204,7 +204,7 @@ def run_etl():
         
         return jsonify({
             'status': 'success',
-            'message': 'ETL exécuté avec succès',
+            'message': 'ETL Raw Daily Data exécuté avec succès',
             'execution_details': {
                 'start_time': start_time.isoformat(),
                 'end_time': datetime.now().isoformat(),
@@ -258,7 +258,7 @@ def get_youtube_credentials():
         return None
 
 def get_sheets_client():
-    """Récupère le client Google Sheets (Service Account) - SUPER DEBUG"""
+    """Récupère le client Google Sheets (Service Account)"""
     try:
         print("=== 🔍 SUPER DEBUG SERVICE ACCOUNT ===")
         
@@ -352,22 +352,23 @@ def get_youtube_services(credentials):
 
 # ==================== RÉCUPÉRATION DONNÉES ====================
 
-def get_analytics_data_daily(analytics_service, start_date, end_date):
-    """Récupère les données Analytics par jour (agrégat chaîne)"""
+def get_analytics_data_detailed(analytics_service, start_date, end_date):
+    """Récupère les données Analytics détaillées par jour et par vidéo pour Raw_Daily_Data"""
     try:
-        print(f"📊 Requête Analytics: {start_date} → {end_date}")
+        print(f"📊 Requête Analytics détaillée: {start_date} → {end_date}")
         
         response = analytics_service.reports().query(
             ids='channel==MINE',
             startDate=start_date,
             endDate=end_date,
-            metrics='views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,subscribersLost',
-            dimensions='day',
-            sort='day'
+            metrics='views,estimatedMinutesWatched,averageViewDuration,likes,dislikes,comments,shares,subscribersGained,subscribersLost,impressions,impressionClickThroughRate,cardClicks,cardClickRate,annotationClickableImpressions',
+            dimensions='day,video',
+            sort='day',
+            maxResults=10000
         ).execute()
         
         rows = response.get('rows', [])
-        print(f"✅ Analytics: {len(rows)} lignes récupérées")
+        print(f"✅ Analytics détaillées: {len(rows)} lignes récupérées")
         
         return rows
         
@@ -377,70 +378,72 @@ def get_analytics_data_daily(analytics_service, start_date, end_date):
 
 # ==================== SAUVEGARDE ====================
 
-def save_analytics_to_sheets(sheets_client, analytics_rows):
-    """Sauvegarde les données Analytics dans Google Sheets"""
+def save_raw_daily_data(sheets_client, analytics_rows):
+    """Sauvegarde les données dans Raw_Daily_Data avec nouvelles colonnes"""
     try:
-        print(f"💾 Sauvegarde {len(analytics_rows)} lignes...")
+        print(f"💾 Sauvegarde Raw_Daily_Data: {len(analytics_rows)} lignes...")
         
         # Ouvrir le spreadsheet
         spreadsheet = sheets_client.open_by_key(SPREADSHEET_ID)
         
-        # Vérifier/créer la feuille yt_video_daily
+        # Vérifier/créer la feuille Raw_Daily_Data
         try:
-            worksheet = spreadsheet.worksheet('yt_video_daily')
-            print("✅ Feuille yt_video_daily trouvée")
+            worksheet = spreadsheet.worksheet('Raw_Daily_Data')
+            print("✅ Feuille Raw_Daily_Data trouvée")
         except gspread.WorksheetNotFound:
-            print("📋 Création feuille yt_video_daily...")
+            print("📋 Création feuille Raw_Daily_Data...")
             worksheet = spreadsheet.add_worksheet(
-                title='yt_video_daily',
-                rows=1000,
-                cols=12
+                title='Raw_Daily_Data',
+                rows=10000,
+                cols=16
             )
             # Ajouter les en-têtes
             headers = [
-                'day', 'videoId', 'views', 'estimatedMinutesWatched',
-                'averageViewDuration', 'averageViewPercentage',
-                'subscribersGained', 'subscribersLost', 'endScreenClicks',
-                'cardClicks', 'impressions', 'clickThroughRate'
+                'date', 'video_id', 'views', 'watch_time_minutes', 'average_view_duration_seconds',
+                'likes', 'dislikes', 'comments', 'shares', 'subscribers_gained', 'subscribers_lost',
+                'impressions', 'click_through_rate', 'card_clicks', 'card_click_rate', 'end_screen_clicks'
             ]
             worksheet.append_row(headers)
-            print("✅ Feuille créée avec en-têtes")
+            print("✅ Feuille créée avec en-têtes Raw_Daily_Data")
         
-        # Convertir les données Analytics au format requis
-        # Format: day, videoId(vide), views, estimatedMinutesWatched, averageViewDuration, averageViewPercentage, subscribersGained, subscribersLost, endScreenClicks(vide), cardClicks(vide), impressions(vide), clickThroughRate(vide)
+        # Convertir les données Analytics au nouveau format
         converted_rows = []
         for row in analytics_rows:
             converted_row = [
-                row[0],  # day
-                '',      # videoId (vide car agrégat par jour)
-                row[1],  # views
-                row[2],  # estimatedMinutesWatched
-                row[3],  # averageViewDuration
-                row[4],  # averageViewPercentage
-                row[5],  # subscribersGained
-                row[6],  # subscribersLost
-                '',      # endScreenClicks (non disponible dans l'API)
-                '',      # cardClicks (non disponible dans l'API)
-                '',      # impressions (non disponible dans l'API)
-                ''       # clickThroughRate (non disponible dans l'API)
+                row[0],  # date
+                row[1],  # video_id
+                row[2] if len(row) > 2 else 0,  # views
+                row[3] if len(row) > 3 else 0,  # watch_time_minutes (estimatedMinutesWatched)
+                row[4] if len(row) > 4 else 0,  # average_view_duration_seconds
+                row[5] if len(row) > 5 else 0,  # likes
+                row[6] if len(row) > 6 else 0,  # dislikes
+                row[7] if len(row) > 7 else 0,  # comments
+                row[8] if len(row) > 8 else 0,  # shares
+                row[9] if len(row) > 9 else 0,  # subscribers_gained
+                row[10] if len(row) > 10 else 0,  # subscribers_lost
+                row[11] if len(row) > 11 else 0,  # impressions
+                row[12] if len(row) > 12 else 0,  # click_through_rate (impressionClickThroughRate)
+                row[13] if len(row) > 13 else 0,  # card_clicks
+                row[14] if len(row) > 14 else 0,  # card_click_rate
+                row[15] if len(row) > 15 else 0   # end_screen_clicks (annotationClickableImpressions)
             ]
             converted_rows.append(converted_row)
         
         # Ajouter les données
         if converted_rows:
             worksheet.append_rows(converted_rows)
-            print(f"✅ {len(converted_rows)} lignes ajoutées à yt_video_daily")
+            print(f"✅ {len(converted_rows)} lignes ajoutées à Raw_Daily_Data")
         
         return True
         
     except Exception as e:
-        print(f"❌ Erreur sauvegarde: {e}")
+        print(f"❌ Erreur sauvegarde Raw_Daily_Data: {e}")
         return False
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     print("=" * 60)
-    print("🚀 YOUTUBE ETL SERVICE - DOUBLE AUTHENTIFICATION")
+    print("🚀 YOUTUBE ETL SERVICE - RAW DAILY DATA V4.0")
     print("=" * 60)
     print(f"🌐 Port: {port}")
     print(f"📺 Channel: {CHANNEL_ID}")
@@ -453,7 +456,7 @@ if __name__ == '__main__':
     print("   GET  /test       - Test basique")
     print("   GET  /test-youtube - Test YouTube seul")
     print("   GET  /test-sheets  - Test Sheets seul")
-    print("   GET  /etl        - ETL complet")
+    print("   GET  /etl        - ETL Raw Daily Data")
     print("=" * 60)
     
     app.run(host='0.0.0.0', port=port, debug=True)
