@@ -19,7 +19,7 @@ SCOPES = [
 ]
 
 # Votre ID de chaîne (à remplacer)
-CHANNEL_ID = "UCxxxxxxxxxxxxxxxxxxxxxxx"  # REMPLACEZ PAR VOTRE VRAI ID
+CHANNEL_ID = "UCS1m_ZhEAbQKfvIdAwoax2A"  # REMPLACEZ PAR VOTRE VRAI ID
 
 @app.route('/')
 def hello():
