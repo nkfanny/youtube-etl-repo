@@ -258,21 +258,55 @@ def get_youtube_credentials():
         return None
 
 def get_sheets_client():
-    """Récupère le client Google Sheets (Service Account)"""
+    """Récupère le client Google Sheets (Service Account) - SUPER DEBUG"""
     try:
+        print("=== 🔍 SUPER DEBUG SERVICE ACCOUNT ===")
+        
+        # 1. Vérifier la variable d'environnement
         sa_json = os.environ.get('GOOGLE_SA_JSON')
+        print(f"📋 Variable exists: {sa_json is not None}")
+        
         if not sa_json:
-            print("⚠️ GOOGLE_SA_JSON non définie")
+            print("❌ GOOGLE_SA_JSON est None ou vide")
+            # Lister toutes les variables d'environnement disponibles
+            print("🔍 Variables disponibles:")
+            for key in sorted(os.environ.keys()):
+                if 'GOOGLE' in key or 'JSON' in key or 'SA' in key:
+                    print(f"   {key}: {len(os.environ[key]) if os.environ[key] else 'VIDE'}")
             return None
         
-        print(f"🔍 JSON length: {len(sa_json)}")
-        print(f"🔍 JSON start: {sa_json[:100]}...")
+        # 2. Analyser le contenu
+        print(f"📏 Longueur JSON: {len(sa_json)} caractères")
+        print(f"🔤 Premiers caractères: '{sa_json[:50]}'")
+        print(f"🔤 Derniers caractères: '{sa_json[-50:]}'")
         
-        sa_data = json.loads(sa_json)
-        print(f"✅ JSON parsé avec succès")
-        print(f"🔍 Type: {sa_data.get('type')}")
-        print(f"🔍 Client email: {sa_data.get('client_email')}")
+        # 3. Vérifier si c'est du JSON valide
+        try:
+            sa_data = json.loads(sa_json)
+            print("✅ JSON parse réussi")
+        except json.JSONDecodeError as je:
+            print(f"❌ JSON invalide à position {je.pos}")
+            print(f"   Contexte: '{sa_json[max(0, je.pos-20):je.pos+20]}'")
+            return None
         
+        # 4. Analyser le contenu du JSON
+        print(f"🔍 Clés JSON: {list(sa_data.keys())}")
+        print(f"🔍 Type: {sa_data.get('type', 'MANQUANT')}")
+        print(f"🔍 Project ID: {sa_data.get('project_id', 'MANQUANT')}")
+        print(f"🔍 Client email: {sa_data.get('client_email', 'MANQUANT')}")
+        
+        # 5. Vérifier les champs obligatoires
+        required_fields = ['type', 'project_id', 'private_key', 'client_email']
+        missing_fields = [field for field in required_fields if field not in sa_data]
+        
+        if missing_fields:
+            print(f"❌ Champs manquants: {missing_fields}")
+            return None
+        
+        print("✅ Tous les champs obligatoires présents")
+        
+        # 6. Créer les credentials
+        print("🔧 Création des credentials...")
         credentials = ServiceAccountCredentials.from_service_account_info(
             sa_data,
             scopes=[
@@ -280,19 +314,20 @@ def get_sheets_client():
                 'https://www.googleapis.com/auth/drive'
             ]
         )
-        print("✅ Credentials Service Account créés")
+        print("✅ Credentials créés")
         
+        # 7. Autoriser gspread
+        print("🔧 Autorisation gspread...")
         client = gspread.authorize(credentials)
-        print("✅ Client Sheets initialisé")
+        print("✅ Client gspread autorisé")
+        
         return client
         
-    except json.JSONDecodeError as e:
-        print(f"❌ Erreur JSON parsing: {e}")
-        print(f"🔍 Problème à la position: {e.pos}")
-        return None
     except Exception as e:
-        print(f"❌ Erreur client Sheets: {e}")
-        print(f"🔍 Type erreur: {type(e).__name__}")
+        print(f"❌ ERREUR INATTENDUE: {type(e).__name__}")
+        print(f"   Message: {str(e)}")
+        import traceback
+        print(f"   Traceback: {traceback.format_exc()}")
         return None
 
 def get_youtube_services(credentials):
