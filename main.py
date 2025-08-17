@@ -10,7 +10,7 @@ import json
 import time
 import logging
 
-# Configuration logging
+# Configuration logging bb
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
