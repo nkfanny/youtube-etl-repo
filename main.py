@@ -226,6 +226,29 @@ def test():
         'message': 'All systems operational',
         'timestamp': datetime.now().isoformat()
     }
+    @app.route('/debug')
+def debug_youtube():
+    try:
+        # Test étape par étape
+        youtube, analytics = get_youtube_services()
+        
+        # Test 1: Lister les chaînes
+        response = youtube.channels().list(part='id,snippet', mine=True).execute()
+        
+        return {
+            'status': 'success',
+            'message': 'Debug info',
+            'channels_found': len(response.get('items', [])),
+            'channels': response.get('items', []),
+            'full_response': response
+        }
+        
+    except Exception as e:
+        return {
+            'status': 'error',
+            'message': str(e),
+            'error_type': type(e).__name__
+        }
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
