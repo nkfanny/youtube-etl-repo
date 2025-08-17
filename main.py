@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 from googleapiclient.discovery import build
-from google.oauth2.service_account import Credentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+from google.oauth2.credentials import Credentials as UserCredentials
 import gspread
 from datetime import datetime, timedelta
 import os
@@ -11,341 +12,400 @@ app = Flask(__name__)
 
 # Configuration
 SPREADSHEET_NAME = "YouTube ETL Data"
-SCOPES = [
-    'https://www.googleapis.com/auth/youtube.readonly',
-    'https://www.googleapis.com/auth/yt-analytics.readonly',
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
-]
-
-# Votre ID de chaîne (à remplacer)
-CHANNEL_ID = "UCS1m_ZhEAbQKfvIdAwoax2A"  # REMPLACEZ PAR VOTRE VRAI ID
+SPREADSHEET_ID = "1bvob7xaoO5X-RHAhl34ZVcX2IH2qYufVy9aKaUdNXxU"
+CHANNEL_ID = "UCS1m_ZhEAbQKfvIdAwoax2A"
 
 @app.route('/')
 def hello():
     return jsonify({
         'status': 'success',
-        'message': 'YouTube ETL Service is running!',
+        'message': 'YouTube ETL Service with Dual Auth!',
         'service': 'youtube-etl',
-        'version': '2.0',
-        'endpoints': ['/etl', '/test']
+        'version': '3.0',
+        'authentication': 'YouTube OAuth + Sheets Service Account',
+        'endpoints': ['/etl', '/test', '/test-youtube', '/test-sheets']
     })
 
 @app.route('/test')
-def test_apis():
-    """Test des APIs YouTube sans cache"""
+def test_basic():
+    """Test basique du service"""
     try:
-        print("=== DÉBUT TEST DES APIS YOUTUBE ===")
-        print(f"🕐 Timestamp: {datetime.now().isoformat()}")
-        print(f"🔧 Version Flask: {Flask.__version__}")
-        print(f"📊 Port configuré: {os.environ.get('PORT', 8080)}")
-        print(f"🌍 Timezone: {datetime.now().astimezone().tzinfo}")
+        print("=== 🧪 TEST BASIQUE DU SERVICE ===")
+        print(f"🕐 {datetime.now().isoformat()}")
         
-        # Test variables d'environnement
-        print("📋 Variables d'environnement disponibles:")
-        env_vars = ['PORT', 'GOOGLE_APPLICATION_CREDENTIALS', 'K_SERVICE', 'K_REVISION']
-        for var in env_vars:
-            value = os.environ.get(var, 'NON_DÉFINIE')
-            print(f"   {var}: {value}")
+        # Variables d'environnement
+        env_status = {}
+        for var in ['YOUTUBE_TOKEN_JSON', 'GOOGLE_SA_JSON', 'PORT', 'K_SERVICE']:
+            value = os.environ.get(var)
+            env_status[var] = 'DÉFINIE' if value else 'MANQUANTE'
+            print(f"   📋 {var}: {env_status[var]}")
         
-        # Test basique sans credentials (pour commencer)
         result = {
             'status': 'success',
-            'message': 'Service de test fonctionnel',
+            'message': 'Service opérationnel',
             'timestamp': datetime.now().isoformat(),
-            'environment': {
-                'port': os.environ.get('PORT', 8080),
-                'service': os.environ.get('K_SERVICE', 'local'),
-                'revision': os.environ.get('K_REVISION', 'dev')
-            },
-            'note': 'Credentials à configurer'
+            'environment': env_status,
+            'channel_id': CHANNEL_ID,
+            'spreadsheet_id': SPREADSHEET_ID,
+            'auth_ready': {
+                'youtube': env_status.get('YOUTUBE_TOKEN_JSON') == 'DÉFINIE',
+                'sheets': env_status.get('GOOGLE_SA_JSON') == 'DÉFINIE'
+            }
         }
         
-        print("✅ Test réussi - Service opérationnel")
-        print("=== FIN TEST ===")
+        print("✅ Test basique réussi")
         return jsonify(result)
         
     except Exception as e:
-        error_msg = str(e)
-        print(f"❌ ERREUR DURANT LE TEST:")
-        print(f"   Type: {type(e).__name__}")
-        print(f"   Message: {error_msg}")
-        print(f"   Timestamp: {datetime.now().isoformat()}")
-        
+        print(f"❌ Erreur test basique: {e}")
         return jsonify({
             'status': 'error',
-            'error_type': type(e).__name__,
-            'message': error_msg,
+            'message': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/test-youtube')
+def test_youtube():
+    """Test spécifique YouTube Analytics"""
+    try:
+        print("=== 📺 TEST YOUTUBE ANALYTICS ===")
+        
+        # Récupérer les credentials YouTube
+        youtube_creds = get_youtube_credentials()
+        if not youtube_creds:
+            raise Exception("YouTube credentials non configurés")
+        
+        print("✅ Credentials YouTube récupérés")
+        
+        # Initialiser les services
+        youtube_service, analytics_service = get_youtube_services(youtube_creds)
+        print("✅ Services YouTube initialisés")
+        
+        # Test Analytics simple
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=3)
+        
+        print(f"🔍 Test Analytics période: {start_date} → {end_date}")
+        
+        response = analytics_service.reports().query(
+            ids='channel==MINE',
+            startDate=str(start_date),
+            endDate=str(end_date),
+            metrics='views,estimatedMinutesWatched',
+            dimensions='day',
+            sort='day'
+        ).execute()
+        
+        rows = response.get('rows', [])
+        print(f"✅ Analytics réponse: {len(rows)} lignes")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'YouTube Analytics accessible',
+            'data_rows': len(rows),
+            'sample_data': rows[:2] if rows else [],
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"❌ Erreur YouTube: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'type': type(e).__name__,
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/test-sheets')
+def test_sheets():
+    """Test spécifique Google Sheets"""
+    try:
+        print("=== 📊 TEST GOOGLE SHEETS ===")
+        
+        # Récupérer le client Sheets
+        sheets_client = get_sheets_client()
+        if not sheets_client:
+            raise Exception("Sheets credentials non configurés")
+        
+        print("✅ Client Sheets récupéré")
+        
+        # Test d'accès au spreadsheet
+        spreadsheet = sheets_client.open_by_key(SPREADSHEET_ID)
+        print(f"✅ Spreadsheet ouvert: {spreadsheet.title}")
+        
+        # Lister les worksheets
+        worksheets = spreadsheet.worksheets()
+        worksheet_names = [ws.title for ws in worksheets]
+        print(f"✅ Worksheets trouvés: {worksheet_names}")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Google Sheets accessible',
+            'spreadsheet_title': spreadsheet.title,
+            'worksheets': worksheet_names,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"❌ Erreur Sheets: {e}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'type': type(e).__name__,
             'timestamp': datetime.now().isoformat()
         }), 500
 
 @app.route('/etl')
 def run_etl():
-    """ETL YouTube complet - sera activé une fois les credentials configurés"""
+    """ETL YouTube complet avec double authentification"""
     try:
-        print("=== 🚀 DÉBUT ETL YOUTUBE ===")
-        print(f"🕐 Début exécution: {datetime.now().isoformat()}")
+        print("=== 🚀 DÉBUT ETL YOUTUBE COMPLET ===")
+        start_time = datetime.now()
+        print(f"🕐 Début: {start_time.isoformat()}")
         
-        # Calculer la fenêtre de dates (7 derniers jours)
+        # 1. Initialiser les credentials
+        print("1️⃣ Initialisation des authentifications...")
+        youtube_creds = get_youtube_credentials()
+        sheets_client = get_sheets_client()
+        
+        if not youtube_creds:
+            raise Exception("YouTube credentials manquants")
+        if not sheets_client:
+            raise Exception("Sheets credentials manquants")
+        
+        print("✅ Double authentification prête")
+        
+        # 2. Initialiser les services YouTube
+        print("2️⃣ Initialisation services YouTube...")
+        youtube_service, analytics_service = get_youtube_services(youtube_creds)
+        print("✅ Services YouTube prêts")
+        
+        # 3. Calculer les dates
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=6)
+        print(f"📅 Période ETL: {start_date} → {end_date}")
         
-        print(f"📅 Période ETL calculée:")
-        print(f"   📅 Date début: {start_date}")
-        print(f"   📅 Date fin: {end_date}")
-        print(f"   📊 Nombre de jours: 7")
+        # 4. Récupérer données Analytics
+        print("3️⃣ Récupération Analytics...")
+        analytics_rows = get_analytics_data_daily(analytics_service, str(start_date), str(end_date))
+        print(f"✅ Analytics: {len(analytics_rows)} lignes récupérées")
         
-        # Debug Channel ID
-        print(f"📺 Configuration chaîne:")
-        print(f"   🆔 Channel ID: {CHANNEL_ID}")
-        print(f"   📋 Spreadsheet: {SPREADSHEET_NAME}")
+        # 5. Sauvegarder dans Sheets
+        print("4️⃣ Sauvegarde dans Sheets...")
+        if analytics_rows:
+            save_analytics_to_sheets(sheets_client, analytics_rows)
+            print("✅ Données sauvegardées dans Sheets")
+        else:
+            print("⚠️ Aucune donnée à sauvegarder")
         
-        # Simuler les étapes ETL avec logs détaillés
-        print("📋 Étapes ETL à exécuter:")
-        print("   1️⃣ Initialisation des services YouTube")
-        print("   2️⃣ Récupération données Analytics")
-        print("   3️⃣ Récupération métadonnées vidéos")
-        print("   4️⃣ Sauvegarde Google Sheets")
-        print("   5️⃣ Logging de l'exécution")
+        # 6. Résultat final
+        execution_time = (datetime.now() - start_time).total_seconds()
+        print(f"✅ ETL TERMINÉ en {execution_time:.2f}s")
         
-        # Pour l'instant, simuler l'ETL
-        print("⚠️ MODE SIMULATION - Credentials non configurés")
-        
-        result = {
+        return jsonify({
             'status': 'success',
-            'message': 'ETL simulé avec succès',
+            'message': 'ETL exécuté avec succès',
             'execution_details': {
-                'start_time': datetime.now().isoformat(),
+                'start_time': start_time.isoformat(),
+                'end_time': datetime.now().isoformat(),
+                'duration_seconds': round(execution_time, 2),
                 'period': {
                     'start': str(start_date),
-                    'end': str(end_date),
-                    'days': 7
+                    'end': str(end_date)
                 },
+                'analytics_rows': len(analytics_rows),
                 'channel_id': CHANNEL_ID,
-                'spreadsheet': SPREADSHEET_NAME,
-                'analytics_rows': 0,
-                'metadata_rows': 0,
-                'mode': 'simulation'
+                'spreadsheet_id': SPREADSHEET_ID
             },
-            'next_steps': [
-                'Configurer Service Account',
-                'Ajouter credentials JSON',
-                'Tester APIs réelles',
-                'Activer mode production'
-            ],
             'timestamp': datetime.now().isoformat()
-        }
-        
-        print("✅ ETL SIMULÉ TERMINÉ AVEC SUCCÈS")
-        print(f"🕐 Fin exécution: {datetime.now().isoformat()}")
-        print("=== 🏁 FIN ETL ===")
-        
-        return jsonify(result)
+        })
         
     except Exception as e:
-        error_msg = str(e)
-        print(f"❌ ERREUR CRITIQUE DURANT L'ETL:")
-        print(f"   🔥 Type d'erreur: {type(e).__name__}")
-        print(f"   💬 Message: {error_msg}")
-        print(f"   🕐 Timestamp: {datetime.now().isoformat()}")
-        print(f"   📍 Localisation: Fonction run_etl()")
-        
-        # TODO: En production, envoyer une alerte
-        
+        print(f"❌ ERREUR ETL: {e}")
         return jsonify({
             'status': 'error',
             'error_details': {
                 'type': type(e).__name__,
-                'message': error_msg,
-                'function': 'run_etl',
-                'timestamp': datetime.now().isoformat()
+                'message': str(e),
+                'function': 'run_etl'
             },
-            'troubleshooting': [
-                'Vérifier les credentials',
-                'Vérifier les APIs activées',
-                'Consulter les logs détaillés'
-            ]
+            'timestamp': datetime.now().isoformat()
         }), 500
 
-def get_fresh_credentials():
-    """Récupère des credentials frais SANS CACHE"""
-    # TODO: Implémenter avec Service Account
-    # Pour l'instant, retourne None
-    return None
+# ==================== AUTHENTIFICATION ====================
 
-def get_youtube_services():
-    """Initialise les services YouTube SANS CACHE (solution du bug GitHub)"""
-    print("🔧 Initialisation des services YouTube...")
-    print("🚫 Mode SANS CACHE activé (correction bug Analytics)")
-    
-    credentials = get_fresh_credentials()
-    
-    if not credentials:
-        print("❌ ERREUR: Credentials non configurés")
-        raise Exception("Credentials non configurés")
-    
-    print("✅ Credentials récupérés")
-    
+def get_youtube_credentials():
+    """Récupère les credentials YouTube OAuth (Brand Account)"""
     try:
-        # IMPORTANT: cache_discovery=False pour éviter le bug de cache
-        print("🔨 Construction service YouTube Data API v3...")
-        youtube_service = build(
-            'youtube', 'v3', 
-            credentials=credentials, 
-            cache_discovery=False  # SOLUTION DU BUG !
-        )
-        print("✅ YouTube Data API service initialisé")
+        token_json = os.environ.get('YOUTUBE_TOKEN_JSON')
+        if not token_json:
+            print("⚠️ YOUTUBE_TOKEN_JSON non définie")
+            return None
         
-        print("🔨 Construction service YouTube Analytics API v2...")
-        analytics_service = build(
-            'youtubeAnalytics', 'v2', 
-            credentials=credentials,
-            cache_discovery=False  # SOLUTION DU BUG !
+        token_data = json.loads(token_json)
+        credentials = UserCredentials.from_authorized_user_info(
+            token_data,
+            scopes=[
+                'https://www.googleapis.com/auth/youtube.readonly',
+                'https://www.googleapis.com/auth/yt-analytics.readonly'
+            ]
         )
-        print("✅ YouTube Analytics API service initialisé")
-        
-        print("🎉 Tous les services YouTube sont prêts")
-        return youtube_service, analytics_service
+        print("✅ Credentials YouTube chargés")
+        return credentials
         
     except Exception as e:
-        print(f"❌ ERREUR lors de l'initialisation des services:")
-        print(f"   Type: {type(e).__name__}")
-        print(f"   Message: {str(e)}")
-        raise
+        print(f"❌ Erreur credentials YouTube: {e}")
+        return None
 
-def get_analytics_data(analytics_service, start_date, end_date):
-    """Récupère les données YouTube Analytics SANS CACHE"""
+def get_sheets_client():
+    """Récupère le client Google Sheets (Service Account)"""
     try:
-        print(f"📊 Début récupération Analytics...")
-        print(f"   📅 Période: {start_date} → {end_date}")
-        print(f"   📺 Channel ID: {CHANNEL_ID}")
+        sa_json = os.environ.get('GOOGLE_SA_JSON')
+        if not sa_json:
+            print("⚠️ GOOGLE_SA_JSON non définie")
+            return None
         
-        # Nettoyer explicitement le cache (équivalent PHP)
-        # En Python, on utilise cache_discovery=False dans build()
-        print("🧹 Cache désactivé (correction bug multi-utilisateurs)")
+        sa_data = json.loads(sa_json)
+        credentials = ServiceAccountCredentials.from_service_account_info(
+            sa_data,
+            scopes=[
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive'
+            ]
+        )
         
-        print("🔍 Construction requête Analytics...")
-        metrics = 'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,subscribersLost'
-        print(f"   📈 Métriques: {metrics}")
-        print(f"   📊 Dimensions: video,day")
-        print(f"   🔢 Tri: day")
+        client = gspread.authorize(credentials)
+        print("✅ Client Sheets initialisé")
+        return client
         
-        print("🚀 Exécution requête YouTube Analytics API...")
+    except Exception as e:
+        print(f"❌ Erreur client Sheets: {e}")
+        return None
+
+def get_youtube_services(credentials):
+    """Initialise les services YouTube SANS CACHE"""
+    print("🔧 Construction services YouTube...")
+    
+    # SOLUTION du bug cache multi-utilisateurs
+    youtube_service = build(
+        'youtube', 'v3',
+        credentials=credentials,
+        cache_discovery=False  # CRUCIAL !
+    )
+    
+    analytics_service = build(
+        'youtubeAnalytics', 'v2',
+        credentials=credentials,
+        cache_discovery=False  # CRUCIAL !
+    )
+    
+    print("✅ Services YouTube construits (cache désactivé)")
+    return youtube_service, analytics_service
+
+# ==================== RÉCUPÉRATION DONNÉES ====================
+
+def get_analytics_data_daily(analytics_service, start_date, end_date):
+    """Récupère les données Analytics par jour (agrégat chaîne)"""
+    try:
+        print(f"📊 Requête Analytics: {start_date} → {end_date}")
+        
         response = analytics_service.reports().query(
-            ids=f'channel=={CHANNEL_ID}',
+            ids='channel==MINE',
             startDate=start_date,
             endDate=end_date,
-            metrics=metrics,
-            dimensions='video,day',
+            metrics='views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,subscribersLost',
+            dimensions='day',
             sort='day'
         ).execute()
         
         rows = response.get('rows', [])
-        columns = response.get('columnHeaders', [])
-        
-        print(f"✅ Récupération Analytics terminée:")
-        print(f"   📊 Lignes récupérées: {len(rows)}")
-        print(f"   📋 Colonnes: {len(columns)}")
-        
-        if len(rows) > 0:
-            print(f"   📝 Exemple première ligne: {rows[0][:3]}...")
-        else:
-            print("   ⚠️ Aucune donnée pour cette période")
+        print(f"✅ Analytics: {len(rows)} lignes récupérées")
         
         return rows
         
     except Exception as e:
-        print(f"❌ ERREUR YouTube Analytics API:")
-        print(f"   🔥 Type: {type(e).__name__}")
-        print(f"   💬 Message: {str(e)}")
-        print(f"   📍 Fonction: get_analytics_data")
-        
-        # Log des détails de la requête pour debug
-        print(f"   🔍 Détails requête:")
-        print(f"      Channel: {CHANNEL_ID}")
-        print(f"      Dates: {start_date} → {end_date}")
-        print(f"      Métriques: {metrics}")
-        
+        print(f"❌ Erreur Analytics: {e}")
         return []
 
-def get_video_metadata(youtube_service, video_ids):
-    """Récupère les métadonnées des vidéos"""
-    if not video_ids:
-        return []
-    
-    metadata = []
-    
-    # Traiter par batches de 50
-    for i in range(0, len(video_ids), 50):
-        batch = video_ids[i:i+50]
+# ==================== SAUVEGARDE ====================
+
+def save_analytics_to_sheets(sheets_client, analytics_rows):
+    """Sauvegarde les données Analytics dans Google Sheets"""
+    try:
+        print(f"💾 Sauvegarde {len(analytics_rows)} lignes...")
         
+        # Ouvrir le spreadsheet
+        spreadsheet = sheets_client.open_by_key(SPREADSHEET_ID)
+        
+        # Vérifier/créer la feuille yt_video_daily
         try:
-            response = youtube_service.videos().list(
-                part='snippet,contentDetails,statistics,status',
-                id=','.join(batch)
-            ).execute()
-            
-            for item in response['items']:
-                duration_sec = parse_duration(item['contentDetails']['duration'])
-                
-                metadata.append([
-                    item['id'],
-                    item['snippet']['title'][:255],
-                    item['snippet']['publishedAt'],
-                    duration_sec,
-                    1 if duration_sec <= 60 else 0,
-                    item['status']['privacyStatus']
-                ])
-                
-        except Exception as e:
-            print(f"Erreur métadonnées batch: {e}")
-            continue
-    
-    return metadata
-
-def parse_duration(duration_iso):
-    """Convertit PT#H#M#S en secondes"""
-    if not duration_iso or duration_iso == 'PT0S':
-        return 0
-    
-    pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?'
-    match = re.match(pattern, duration_iso)
-    
-    if not match:
-        return 0
-    
-    hours = int(match.group(1) or 0)
-    minutes = int(match.group(2) or 0)
-    seconds = float(match.group(3) or 0)
-    
-    return int(hours * 3600 + minutes * 60 + seconds)
-
-def save_to_sheets(data, sheet_name):
-    """Sauvegarde dans Google Sheets"""
-    print(f"💾 Début sauvegarde Google Sheets...")
-    print(f"   📊 Données: {len(data)} lignes")
-    print(f"   📋 Feuille: {sheet_name}")
-    print(f"   📄 Spreadsheet: {SPREADSHEET_NAME}")
-    
-    # TODO: Implémenter gspread
-    print("⚠️ Sauvegarde simulée - gspread à implémenter")
-    print(f"✅ Simulation sauvegarde terminée")
+            worksheet = spreadsheet.worksheet('yt_video_daily')
+            print("✅ Feuille yt_video_daily trouvée")
+        except gspread.WorksheetNotFound:
+            print("📋 Création feuille yt_video_daily...")
+            worksheet = spreadsheet.add_worksheet(
+                title='yt_video_daily',
+                rows=1000,
+                cols=12
+            )
+            # Ajouter les en-têtes
+            headers = [
+                'day', 'videoId', 'views', 'estimatedMinutesWatched',
+                'averageViewDuration', 'averageViewPercentage',
+                'subscribersGained', 'subscribersLost', 'endScreenClicks',
+                'cardClicks', 'impressions', 'clickThroughRate'
+            ]
+            worksheet.append_row(headers)
+            print("✅ Feuille créée avec en-têtes")
+        
+        # Convertir les données Analytics au format requis
+        # Format: day, videoId(vide), views, estimatedMinutesWatched, averageViewDuration, averageViewPercentage, subscribersGained, subscribersLost, endScreenClicks(vide), cardClicks(vide), impressions(vide), clickThroughRate(vide)
+        converted_rows = []
+        for row in analytics_rows:
+            converted_row = [
+                row[0],  # day
+                '',      # videoId (vide car agrégat par jour)
+                row[1],  # views
+                row[2],  # estimatedMinutesWatched
+                row[3],  # averageViewDuration
+                row[4],  # averageViewPercentage
+                row[5],  # subscribersGained
+                row[6],  # subscribersLost
+                '',      # endScreenClicks (non disponible dans l'API)
+                '',      # cardClicks (non disponible dans l'API)
+                '',      # impressions (non disponible dans l'API)
+                ''       # clickThroughRate (non disponible dans l'API)
+            ]
+            converted_rows.append(converted_row)
+        
+        # Ajouter les données
+        if converted_rows:
+            worksheet.append_rows(converted_rows)
+            print(f"✅ {len(converted_rows)} lignes ajoutées à yt_video_daily")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erreur sauvegarde: {e}")
+        return False
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    print("=" * 50)
-    print("🚀 DÉMARRAGE YOUTUBE ETL SERVICE")
-    print("=" * 50)
+    print("=" * 60)
+    print("🚀 YOUTUBE ETL SERVICE - DOUBLE AUTHENTIFICATION")
+    print("=" * 60)
     print(f"🌐 Port: {port}")
-    print(f"🔧 Mode debug: True")
-    print(f"📺 Channel ID: {CHANNEL_ID}")
-    print(f"📄 Spreadsheet: {SPREADSHEET_NAME}")
-    print(f"🕐 Démarrage: {datetime.now().isoformat()}")
-    print("=" * 50)
-    print("📋 Endpoints disponibles:")
-    print("   GET  /      - Page d'accueil")
-    print("   GET  /test  - Test des APIs")
-    print("   GET  /etl   - ETL YouTube complet")
-    print("=" * 50)
+    print(f"📺 Channel: {CHANNEL_ID}")
+    print(f"📊 Spreadsheet: {SPREADSHEET_ID}")
+    print(f"🔐 Auth YouTube: OAuth User Token")
+    print(f"🔐 Auth Sheets: Service Account")
+    print("=" * 60)
+    print("📋 Endpoints:")
+    print("   GET  /           - Accueil")
+    print("   GET  /test       - Test basique")
+    print("   GET  /test-youtube - Test YouTube seul")
+    print("   GET  /test-sheets  - Test Sheets seul")
+    print("   GET  /etl        - ETL complet")
+    print("=" * 60)
     
     app.run(host='0.0.0.0', port=port, debug=True)
