@@ -394,7 +394,8 @@ def get_video_performance_data(analytics_service, start_date, end_date):
             ids='channel==MINE',
             startDate=start_date,
             endDate=end_date,
-            metrics='views,estimatedMinutesWatched,likes,dislikes,comments,shares,averageViewDuration',
+            #metrics='views,estimatedMinutesWatched,likes,dislikes,comments,shares,averageViewDuration',
+            metrics='views,estimatedMinutesWatched,averageViewDuration,likes,comments',
             dimensions='video',
             maxResults=50
         ).execute()
