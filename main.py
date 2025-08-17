@@ -10,7 +10,7 @@ def hello():
         'status': 'success',
         'message': 'YouTube ETL Service is running!',
         'service': 'youtube-etl',
-        'version': '5.2',
+        'version': '5.3',
         'endpoints': ['/etl-debug', '/test-imports']
     }
 
@@ -78,13 +78,33 @@ def etl_debug():
         channel_title = channel['snippet']['title']
         steps.append(f"6. Channel: {channel_title} (ID: {channel_id})")
         
+        # Test Analytics
+        analytics = build('youtubeAnalytics', 'v2', credentials=credentials)
+        steps.append("7. Analytics service created")
+        
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=6)
+        
+        analytics_response = analytics.reports().query(
+            ids=f'channel=={channel_id}',
+            startDate=start_date.strftime('%Y-%m-%d'),
+            endDate=end_date.strftime('%Y-%m-%d'),
+            metrics='views',
+            maxResults=5
+        ).execute()
+        
+        analytics_rows = analytics_response.get('rows', [])
+        steps.append(f"8. Analytics data: {len(analytics_rows)} rows for {start_date} to {end_date}")
+        
         return {
             'status': 'success',
-            'message': 'ETL debug partial success!',
+            'message': 'ETL with Analytics success!',
             'steps': steps,
             'data': {
                 'channel_title': channel_title,
-                'channel_id': channel_id
+                'channel_id': channel_id,
+                'analytics_rows': len(analytics_rows),
+                'period': f'{start_date} to {end_date}'
             }
         }
         
