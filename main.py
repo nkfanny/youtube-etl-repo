@@ -361,7 +361,7 @@ def get_analytics_data_detailed(analytics_service, start_date, end_date):
             ids='channel==MINE',
             startDate=start_date,
             endDate=end_date,
-            metrics='views,estimatedMinutesWatched,averageViewDuration,likes,dislikes,comments,shares,subscribersGained,subscribersLost,cardClicks,cardClickRate,annotationClickableImpressions'
+            metrics='views,estimatedMinutesWatched,averageViewDuration,likes,dislikes,comments,shares,subscribersGained,subscribersLost,cardClicks,cardClickRate,annotationClickableImpressions',
           #  metrics='views,estimatedMinutesWatched,averageViewDuration,likes,dislikes,comments,shares,subscribersGained,subscribersLost,impressions,impressionClickThroughRate,cardClicks,cardClickRate,annotationClickableImpressions',
             dimensions='day,video',
             sort='day',
