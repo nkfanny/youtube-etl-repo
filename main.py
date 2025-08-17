@@ -386,7 +386,7 @@ def get_daily_channel_data(analytics_service, start_date, end_date):
         return []
 
 def get_video_performance_data(analytics_service, start_date, end_date):
-    """PHASE 2: Récupère les données par vidéo (fenêtre 7 jours)"""
+    """PHASE 2: Récupère les données par vidéo (fenêtre 7 jours) - OPTION A"""
     try:
         print(f"📊 Requête Video Performance Data: {start_date} → {end_date}")
         
@@ -394,10 +394,11 @@ def get_video_performance_data(analytics_service, start_date, end_date):
             ids='channel==MINE',
             startDate=start_date,
             endDate=end_date,
-            #metrics='views,estimatedMinutesWatched,likes,dislikes,comments,shares,averageViewDuration',
-            metrics='views,estimatedMinutesWatched,averageViewDuration,likes,comments',
+            # ✅ OPTION A: Métriques compatibles avec dimensions=video
+            metrics='views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage',
             dimensions='video',
-            maxResults=50
+            maxResults=50,
+            sort='-views'  # Trier par vues décroissantes
         ).execute()
         
         rows = response.get('rows', [])
@@ -465,7 +466,7 @@ def save_daily_channel_data(sheets_client, daily_rows):
         return False
 
 def save_video_performance_data(sheets_client, video_rows):
-    """Sauvegarde Phase 2 dans Video_Performance_Data"""
+    """Sauvegarde Phase 2 dans Video_Performance_Data - OPTION A"""
     try:
         print(f"💾 Sauvegarde Video Performance Data: {len(video_rows)} lignes...")
         
@@ -481,15 +482,15 @@ def save_video_performance_data(sheets_client, video_rows):
             worksheet = spreadsheet.add_worksheet(
                 title='Video_Performance_Data',
                 rows=1000,
-                cols=9
+                cols=6
             )
-            # Ajouter les en-têtes
+            # ✅ En-têtes OPTION A (métriques de base)
             headers = [
-                'video_id', 'views_7d', 'watch_time_7d', 'likes_7d', 'dislikes_7d',
-                'comments_7d', 'shares_7d', 'avg_view_duration', 'extraction_date'
+                'video_id', 'views_7d', 'watch_time_7d', 'avg_view_duration', 
+                'avg_view_percentage', 'extraction_date'
             ]
             worksheet.append_row(headers)
-            print("✅ Feuille créée avec en-têtes Video Performance Data")
+            print("✅ Feuille créée avec en-têtes Video Performance Data (Option A)")
         
         # Convertir les données avec date d'extraction
         extraction_date = datetime.now().strftime('%Y-%m-%d')
@@ -499,11 +500,8 @@ def save_video_performance_data(sheets_client, video_rows):
                 row[0],  # video_id
                 row[1] if len(row) > 1 else 0,  # views_7d
                 row[2] if len(row) > 2 else 0,  # watch_time_7d
-                row[3] if len(row) > 3 else 0,  # likes_7d
-                row[4] if len(row) > 4 else 0,  # dislikes_7d
-                row[5] if len(row) > 5 else 0,  # comments_7d
-                row[6] if len(row) > 6 else 0,  # shares_7d
-                row[7] if len(row) > 7 else 0,  # avg_view_duration
+                row[3] if len(row) > 3 else 0,  # avg_view_duration
+                row[4] if len(row) > 4 else 0,  # avg_view_percentage
                 extraction_date  # extraction_date
             ]
             converted_rows.append(converted_row)
