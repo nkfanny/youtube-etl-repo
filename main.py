@@ -256,7 +256,44 @@ def get_youtube_credentials():
     except Exception as e:
         print(f"❌ Erreur credentials YouTube: {e}")
         return None
-    
+
+def get_sheets_client():
+    """Récupère le client Google Sheets (Service Account)"""
+    try:
+        sa_json = os.environ.get('GOOGLE_SA_JSON')
+        if not sa_json:
+            print("⚠️ GOOGLE_SA_JSON non définie")
+            return None
+        
+        print(f"🔍 JSON length: {len(sa_json)}")
+        print(f"🔍 JSON start: {sa_json[:100]}...")
+        
+        sa_data = json.loads(sa_json)
+        print(f"✅ JSON parsé avec succès")
+        print(f"🔍 Type: {sa_data.get('type')}")
+        print(f"🔍 Client email: {sa_data.get('client_email')}")
+        
+        credentials = ServiceAccountCredentials.from_service_account_info(
+            sa_data,
+            scopes=[
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive'
+            ]
+        )
+        print("✅ Credentials Service Account créés")
+        
+        client = gspread.authorize(credentials)
+        print("✅ Client Sheets initialisé")
+        return client
+        
+    except json.JSONDecodeError as e:
+        print(f"❌ Erreur JSON parsing: {e}")
+        print(f"🔍 Problème à la position: {e.pos}")
+        return None
+    except Exception as e:
+        print(f"❌ Erreur client Sheets: {e}")
+        print(f"🔍 Type erreur: {type(e).__name__}")
+        return None
 
 def get_youtube_services(credentials):
     """Initialise les services YouTube SANS CACHE"""
