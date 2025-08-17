@@ -10,7 +10,7 @@ def hello():
         'status': 'success',
         'message': 'YouTube ETL Service is running!',
         'service': 'youtube-etl',
-        'version': '5.0',
+        'version': '5.1',
         'endpoints': ['/etl-debug', '/test-imports']
     }
 
@@ -57,84 +57,3 @@ def etl_debug():
             'https://www.googleapis.com/auth/spreadsheets'
         ])
         steps.append("3. Credentials loaded")
-        
-        # Étape 3: YouTube Service
-        youtube = build('youtube', 'v3', credentials=credentials)
-        steps.append("4. YouTube service created")
-        
-# Étape 4: Test Channel (deux méthodes)
-try:
-    response = youtube.channels().list(part='id,snippet', mine=True).execute()
-    if response.get('items'):
-        steps.append("4a. Channel found with mine=True")
-    else:
-        steps.append("4a. No channel with mine=True, trying channel ID method...")
-        # Essayez avec votre ID de chaîne - remplacez UCxxxxxxxxx par votre vrai ID
-        response = youtube.channels().list(part='id,snippet', id='UCS1m_ZhEAbQKfvIdAwoax2A').execute()
-        if not response.get('items'):
-            raise Exception('Channel not found with either method')
-        steps.append("4b. Channel found with direct ID")
-except Exception as e:
-    steps.append(f"4. Channel test failed: {str(e)}")
-    raise
-        if not response.get('items'):
-            raise Exception('No YouTube channel found')
-        
-        channel = response['items'][0]
-        channel_id = channel['id']
-        channel_title = channel['snippet']['title']
-        steps.append(f"5. Channel found: {channel_title} (ID: {channel_id})")
-        
-        # Étape 5: Analytics Service
-        analytics = build('youtubeAnalytics', 'v2', credentials=credentials)
-        steps.append("6. Analytics service created")
-        
-        # Étape 6: Test Analytics
-        end_date = datetime.now().date()
-        start_date = end_date - timedelta(days=6)
-        
-        analytics_response = analytics.reports().query(
-            ids=f'channel=={channel_id}',
-            startDate=start_date.strftime('%Y-%m-%d'),
-            endDate=end_date.strftime('%Y-%m-%d'),
-            metrics='views',
-            maxResults=5
-        ).execute()
-        
-        analytics_rows = analytics_response.get('rows', [])
-        steps.append(f"7. Analytics data: {len(analytics_rows)} rows for {start_date} to {end_date}")
-        
-        # Étape 7: Google Sheets
-        gc = gspread.authorize(credentials)
-        steps.append("8. Google Sheets authorized")
-        
-        # Test création spreadsheet
-        spreadsheet_name = f"YouTube ETL Test {datetime.now().strftime('%Y%m%d_%H%M')}"
-        spreadsheet = gc.create(spreadsheet_name)
-        steps.append(f"9. Test spreadsheet created: {spreadsheet.url}")
-        
-        return {
-            'status': 'success',
-            'message': 'ETL debug completed successfully!',
-            'steps': steps,
-            'data': {
-                'channel_title': channel_title,
-                'channel_id': channel_id,
-                'analytics_rows': len(analytics_rows),
-                'spreadsheet_url': spreadsheet.url,
-                'period': f'{start_date} to {end_date}'
-            }
-        }
-        
-    except Exception as e:
-        steps.append(f"ERROR: {str(e)}")
-        return {
-            'status': 'error',
-            'message': str(e),
-            'steps': steps,
-            'error_type': type(e).__name__
-        }
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
