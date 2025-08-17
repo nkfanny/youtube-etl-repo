@@ -353,23 +353,21 @@ def get_youtube_services(credentials):
 # ==================== RÉCUPÉRATION DONNÉES ====================
 
 def get_analytics_data_detailed(analytics_service, start_date, end_date):
-    """Récupère les données Analytics détaillées par jour et par vidéo pour Raw_Daily_Data"""
+    """Phase 1: Récupère les données quotidiennes par chaîne"""
     try:
-        print(f"📊 Requête Analytics détaillée: {start_date} → {end_date}")
+        print(f"📊 Requête Daily Channel Data: {start_date} → {end_date}")
         
         response = analytics_service.reports().query(
             ids='channel==MINE',
             startDate=start_date,
             endDate=end_date,
-            metrics='views,estimatedMinutesWatched,averageViewDuration,likes,dislikes,comments,shares,subscribersGained,subscribersLost,cardClicks,cardClickRate,annotationClickableImpressions',
-          #  metrics='views,estimatedMinutesWatched,averageViewDuration,likes,dislikes,comments,shares,subscribersGained,subscribersLost,impressions,impressionClickThroughRate,cardClicks,cardClickRate,annotationClickableImpressions',
-            dimensions='video',
-          #  sort='day',
-            maxResults=10000
+            metrics='views,estimatedMinutesWatched,subscribersGained,subscribersLost,comments,likes,averageViewDuration',
+            dimensions='day',
+            sort='day'
         ).execute()
         
         rows = response.get('rows', [])
-        print(f"✅ Analytics détaillées: {len(rows)} lignes récupérées")
+        print(f"✅ Daily Channel Data: {len(rows)} lignes récupérées")
         
         return rows
         
