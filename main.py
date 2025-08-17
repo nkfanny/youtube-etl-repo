@@ -256,31 +256,7 @@ def get_youtube_credentials():
     except Exception as e:
         print(f"❌ Erreur credentials YouTube: {e}")
         return None
-
-def get_sheets_client():
-    """Récupère le client Google Sheets (Service Account)"""
-    try:
-        sa_json = os.environ.get('GOOGLE_SA_JSON')
-        if not sa_json:
-            print("⚠️ GOOGLE_SA_JSON non définie")
-            return None
-        
-        sa_data = json.loads(sa_json)
-        credentials = ServiceAccountCredentials.from_service_account_info(
-            sa_data,
-            scopes=[
-                'https://www.googleapis.com/auth/spreadsheets',
-                'https://www.googleapis.com/auth/drive'
-            ]
-        )
-        
-        client = gspread.authorize(credentials)
-        print("✅ Client Sheets initialisé")
-        return client
-        
-    except Exception as e:
-        print(f"❌ Erreur client Sheets: {e}")
-        return None
+    
 
 def get_youtube_services(credentials):
     """Initialise les services YouTube SANS CACHE"""
