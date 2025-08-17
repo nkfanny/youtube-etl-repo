@@ -19,9 +19,9 @@ CHANNEL_ID = "UCS1m_ZhEAbQKfvIdAwoax2A"
 def hello():
     return jsonify({
         'status': 'success',
-        'message': 'YouTube ETL Service - Raw Daily Data!',
+        'message': 'YouTube ETL Service - Hybride Phase 1 + 2!',
         'service': 'youtube-etl',
-        'version': '4.0',
+        'version': '5.0',
         'authentication': 'YouTube OAuth + Sheets Service Account',
         'endpoints': ['/etl', '/test', '/test-youtube', '/test-sheets']
     })
@@ -93,7 +93,7 @@ def test_youtube():
             endDate=str(end_date),
             metrics='views,estimatedMinutesWatched',
             dimensions='day',
-           # sort='day'
+            sort='day'
         ).execute()
         
         rows = response.get('rows', [])
@@ -157,9 +157,9 @@ def test_sheets():
 
 @app.route('/etl')
 def run_etl():
-    """ETL YouTube complet avec nouvelles colonnes Raw_Daily_Data"""
+    """ETL YouTube complet - Phase 1 & 2 Hybride"""
     try:
-        print("=== 🚀 DÉBUT ETL YOUTUBE RAW DAILY DATA ===")
+        print("=== 🚀 DÉBUT ETL YOUTUBE HYBRIDE (PHASE 1 + 2) ===")
         start_time = datetime.now()
         print(f"🕐 Début: {start_time.isoformat()}")
         
@@ -185,26 +185,35 @@ def run_etl():
         start_date = end_date - timedelta(days=6)
         print(f"📅 Période ETL: {start_date} → {end_date}")
         
-        # 4. Récupérer données Analytics détaillées
-        print("3️⃣ Récupération Analytics détaillées...")
-        analytics_rows = get_analytics_data_detailed(analytics_service, str(start_date), str(end_date))
-        print(f"✅ Analytics: {len(analytics_rows)} lignes récupérées")
+        # 4. PHASE 1 : Données quotidiennes par chaîne
+        print("3️⃣ PHASE 1 : Récupération Daily Channel Data...")
+        daily_rows = get_daily_channel_data(analytics_service, str(start_date), str(end_date))
+        print(f"✅ Phase 1: {len(daily_rows)} lignes récupérées")
         
-        # 5. Sauvegarder dans Sheets
-        print("4️⃣ Sauvegarde dans Raw_Daily_Data...")
-        if analytics_rows:
-            save_raw_daily_data(sheets_client, analytics_rows)
-            print("✅ Données sauvegardées dans Raw_Daily_Data")
-        else:
-            print("⚠️ Aucune donnée à sauvegarder")
+        # 5. PHASE 2 : Données par vidéo (7 jours)
+        print("4️⃣ PHASE 2 : Récupération Video Performance Data...")
+        video_rows = get_video_performance_data(analytics_service, str(start_date), str(end_date))
+        print(f"✅ Phase 2: {len(video_rows)} lignes récupérées")
         
-        # 6. Résultat final
+        # 6. Sauvegarder Phase 1
+        print("5️⃣ Sauvegarde Daily Channel Data...")
+        if daily_rows:
+            save_daily_channel_data(sheets_client, daily_rows)
+            print("✅ Phase 1 sauvegardée dans Raw_Daily_Data")
+        
+        # 7. Sauvegarder Phase 2
+        print("6️⃣ Sauvegarde Video Performance Data...")
+        if video_rows:
+            save_video_performance_data(sheets_client, video_rows)
+            print("✅ Phase 2 sauvegardée dans Video_Performance_Data")
+        
+        # 8. Résultat final
         execution_time = (datetime.now() - start_time).total_seconds()
-        print(f"✅ ETL TERMINÉ en {execution_time:.2f}s")
+        print(f"✅ ETL HYBRIDE TERMINÉ en {execution_time:.2f}s")
         
         return jsonify({
             'status': 'success',
-            'message': 'ETL Raw Daily Data exécuté avec succès',
+            'message': 'ETL Hybride Phase 1+2 exécuté avec succès',
             'execution_details': {
                 'start_time': start_time.isoformat(),
                 'end_time': datetime.now().isoformat(),
@@ -213,7 +222,8 @@ def run_etl():
                     'start': str(start_date),
                     'end': str(end_date)
                 },
-                'analytics_rows': len(analytics_rows),
+                'phase1_daily_rows': len(daily_rows),
+                'phase2_video_rows': len(video_rows),
                 'channel_id': CHANNEL_ID,
                 'spreadsheet_id': SPREADSHEET_ID
             },
@@ -227,7 +237,7 @@ def run_etl():
             'error_details': {
                 'type': type(e).__name__,
                 'message': str(e),
-                'function': 'run_etl'
+                'function': 'run_etl_hybrid'
             },
             'timestamp': datetime.now().isoformat()
         }), 500
@@ -352,8 +362,8 @@ def get_youtube_services(credentials):
 
 # ==================== RÉCUPÉRATION DONNÉES ====================
 
-def get_analytics_data_detailed(analytics_service, start_date, end_date):
-    """Phase 1: Récupère les données quotidiennes par chaîne"""
+def get_daily_channel_data(analytics_service, start_date, end_date):
+    """PHASE 1: Récupère les données quotidiennes par chaîne"""
     try:
         print(f"📊 Requête Daily Channel Data: {start_date} → {end_date}")
         
@@ -372,20 +382,43 @@ def get_analytics_data_detailed(analytics_service, start_date, end_date):
         return rows
         
     except Exception as e:
-        print(f"❌ Erreur Analytics: {e}")
+        print(f"❌ Erreur Daily Channel Data: {e}")
+        return []
+
+def get_video_performance_data(analytics_service, start_date, end_date):
+    """PHASE 2: Récupère les données par vidéo (fenêtre 7 jours)"""
+    try:
+        print(f"📊 Requête Video Performance Data: {start_date} → {end_date}")
+        
+        response = analytics_service.reports().query(
+            ids='channel==MINE',
+            startDate=start_date,
+            endDate=end_date,
+            metrics='views,estimatedMinutesWatched,likes,dislikes,comments,shares,averageViewDuration',
+            dimensions='video',
+            maxResults=50
+        ).execute()
+        
+        rows = response.get('rows', [])
+        print(f"✅ Video Performance Data: {len(rows)} lignes récupérées")
+        
+        return rows
+        
+    except Exception as e:
+        print(f"❌ Erreur Video Performance Data: {e}")
         return []
 
 # ==================== SAUVEGARDE ====================
 
-def save_raw_daily_data(sheets_client, analytics_rows):
-    """Sauvegarde les données dans Raw_Daily_Data avec nouvelles colonnes"""
+def save_daily_channel_data(sheets_client, daily_rows):
+    """Sauvegarde Phase 1 dans Raw_Daily_Data"""
     try:
-        print(f"💾 Sauvegarde Raw_Daily_Data: {len(analytics_rows)} lignes...")
+        print(f"💾 Sauvegarde Daily Channel Data: {len(daily_rows)} lignes...")
         
         # Ouvrir le spreadsheet
         spreadsheet = sheets_client.open_by_key(SPREADSHEET_ID)
         
-        # Vérifier/créer la feuille Raw_Daily_Data
+        # Utiliser la feuille Raw_Daily_Data existante
         try:
             worksheet = spreadsheet.worksheet('Raw_Daily_Data')
             print("✅ Feuille Raw_Daily_Data trouvée")
@@ -393,38 +426,29 @@ def save_raw_daily_data(sheets_client, analytics_rows):
             print("📋 Création feuille Raw_Daily_Data...")
             worksheet = spreadsheet.add_worksheet(
                 title='Raw_Daily_Data',
-                rows=10000,
-                cols=16
+                rows=1000,
+                cols=8
             )
             # Ajouter les en-têtes
             headers = [
-                'date', 'video_id', 'views', 'watch_time_minutes', 'average_view_duration_seconds',
-                'likes', 'dislikes', 'comments', 'shares', 'subscribers_gained', 'subscribers_lost',
-                'impressions', 'click_through_rate', 'card_clicks', 'card_click_rate', 'end_screen_clicks'
+                'date', 'total_views', 'total_watch_time', 'subscribers_gained', 
+                'subscribers_lost', 'total_comments', 'total_likes', 'avg_view_duration'
             ]
             worksheet.append_row(headers)
-            print("✅ Feuille créée avec en-têtes Raw_Daily_Data")
+            print("✅ Feuille créée avec en-têtes Daily Channel Data")
         
-        # Convertir les données Analytics au nouveau format
+        # Convertir les données
         converted_rows = []
-        for row in analytics_rows:
+        for row in daily_rows:
             converted_row = [
                 row[0],  # date
-                row[1],  # video_id
-                row[2] if len(row) > 2 else 0,  # views
-                row[3] if len(row) > 3 else 0,  # watch_time_minutes (estimatedMinutesWatched)
-                row[4] if len(row) > 4 else 0,  # average_view_duration_seconds
-                row[5] if len(row) > 5 else 0,  # likes
-                row[6] if len(row) > 6 else 0,  # dislikes
-                row[7] if len(row) > 7 else 0,  # comments
-                row[8] if len(row) > 8 else 0,  # shares
-                row[9] if len(row) > 9 else 0,  # subscribers_gained
-                row[10] if len(row) > 10 else 0,  # subscribers_lost
-                row[11] if len(row) > 11 else 0,  # impressions
-                row[12] if len(row) > 12 else 0,  # click_through_rate (impressionClickThroughRate)
-                row[13] if len(row) > 13 else 0,  # card_clicks
-                row[14] if len(row) > 14 else 0,  # card_click_rate
-                row[15] if len(row) > 15 else 0   # end_screen_clicks (annotationClickableImpressions)
+                row[1] if len(row) > 1 else 0,  # total_views
+                row[2] if len(row) > 2 else 0,  # total_watch_time
+                row[3] if len(row) > 3 else 0,  # subscribers_gained
+                row[4] if len(row) > 4 else 0,  # subscribers_lost
+                row[5] if len(row) > 5 else 0,  # total_comments
+                row[6] if len(row) > 6 else 0,  # total_likes
+                row[7] if len(row) > 7 else 0   # avg_view_duration
             ]
             converted_rows.append(converted_row)
         
@@ -436,13 +460,68 @@ def save_raw_daily_data(sheets_client, analytics_rows):
         return True
         
     except Exception as e:
-        print(f"❌ Erreur sauvegarde Raw_Daily_Data: {e}")
+        print(f"❌ Erreur sauvegarde Daily Channel Data: {e}")
+        return False
+
+def save_video_performance_data(sheets_client, video_rows):
+    """Sauvegarde Phase 2 dans Video_Performance_Data"""
+    try:
+        print(f"💾 Sauvegarde Video Performance Data: {len(video_rows)} lignes...")
+        
+        # Ouvrir le spreadsheet
+        spreadsheet = sheets_client.open_by_key(SPREADSHEET_ID)
+        
+        # Vérifier/créer la feuille Video_Performance_Data
+        try:
+            worksheet = spreadsheet.worksheet('Video_Performance_Data')
+            print("✅ Feuille Video_Performance_Data trouvée")
+        except gspread.WorksheetNotFound:
+            print("📋 Création feuille Video_Performance_Data...")
+            worksheet = spreadsheet.add_worksheet(
+                title='Video_Performance_Data',
+                rows=1000,
+                cols=9
+            )
+            # Ajouter les en-têtes
+            headers = [
+                'video_id', 'views_7d', 'watch_time_7d', 'likes_7d', 'dislikes_7d',
+                'comments_7d', 'shares_7d', 'avg_view_duration', 'extraction_date'
+            ]
+            worksheet.append_row(headers)
+            print("✅ Feuille créée avec en-têtes Video Performance Data")
+        
+        # Convertir les données avec date d'extraction
+        extraction_date = datetime.now().strftime('%Y-%m-%d')
+        converted_rows = []
+        for row in video_rows:
+            converted_row = [
+                row[0],  # video_id
+                row[1] if len(row) > 1 else 0,  # views_7d
+                row[2] if len(row) > 2 else 0,  # watch_time_7d
+                row[3] if len(row) > 3 else 0,  # likes_7d
+                row[4] if len(row) > 4 else 0,  # dislikes_7d
+                row[5] if len(row) > 5 else 0,  # comments_7d
+                row[6] if len(row) > 6 else 0,  # shares_7d
+                row[7] if len(row) > 7 else 0,  # avg_view_duration
+                extraction_date  # extraction_date
+            ]
+            converted_rows.append(converted_row)
+        
+        # Ajouter les données
+        if converted_rows:
+            worksheet.append_rows(converted_rows)
+            print(f"✅ {len(converted_rows)} lignes ajoutées à Video_Performance_Data")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erreur sauvegarde Video Performance Data: {e}")
         return False
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     print("=" * 60)
-    print("🚀 YOUTUBE ETL SERVICE - RAW DAILY DATA V4.0")
+    print("🚀 YOUTUBE ETL SERVICE - HYBRIDE PHASE 1 + 2 V5.0")
     print("=" * 60)
     print(f"🌐 Port: {port}")
     print(f"📺 Channel: {CHANNEL_ID}")
@@ -455,7 +534,7 @@ if __name__ == '__main__':
     print("   GET  /test       - Test basique")
     print("   GET  /test-youtube - Test YouTube seul")
     print("   GET  /test-sheets  - Test Sheets seul")
-    print("   GET  /etl        - ETL Raw Daily Data")
+    print("   GET  /etl        - ETL Hybride Phase 1 + 2")
     print("=" * 60)
     
     app.run(host='0.0.0.0', port=port, debug=True)
